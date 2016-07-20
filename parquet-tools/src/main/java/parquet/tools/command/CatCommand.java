@@ -18,6 +18,9 @@ package parquet.tools.command;
 import java.io.PrintWriter;
 
 import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
 import org.apache.hadoop.fs.Path;
 
 import parquet.hadoop.ParquetReader;
@@ -30,11 +33,25 @@ public class CatCommand extends ArgsOnlyCommand {
     "<input>",
     "where <input> is the parquet file to print to stdout"
   };
-
-  public CatCommand() {
-    super(1, 1);
+  
+  public static final Options OPTIONS;
+  static {
+      OPTIONS = new Options();
+      Option md = OptionBuilder.withLongOpt("render-int96-as-timestamp")
+                               .withDescription("Render int96 as IMPALA timestamp")
+                               .create('r');
+      OPTIONS.addOption(md);
   }
 
+  public CatCommand() {
+    super(1, 2);
+  }
+  
+  @Override
+  public Options getOptions() {
+    return OPTIONS;
+  }
+  
   @Override
   public String[] getUsageDescription() {
     return USAGE;
@@ -47,12 +64,14 @@ public class CatCommand extends ArgsOnlyCommand {
     String[] args = options.getArgs();
     String input = args[0];
 
+    boolean showts = (args.length > 1 && args[1].contains("-r") ) ? true : false;
+    
     ParquetReader<SimpleRecord> reader = null;
     try {
       PrintWriter writer = new PrintWriter(Main.out, true);
       reader = new ParquetReader<SimpleRecord>(new Path(input), new SimpleReadSupport());
       for (SimpleRecord value = reader.read(); value != null; value = reader.read()) {
-        value.prettyPrint(writer);
+        value.prettyPrint(writer, showts);
         writer.println();
       }
     } finally {

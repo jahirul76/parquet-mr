@@ -16,6 +16,8 @@
 package parquet.tools.read;
 
 import java.io.PrintWriter;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -48,10 +50,13 @@ public class SimpleRecord {
   }
 
   public void prettyPrint(PrintWriter out) {
-    prettyPrint(out, 0);
+    prettyPrint(out, 0, false);
+  }
+  public void prettyPrint(PrintWriter out, boolean showTs) {
+	prettyPrint(out, 0,  showTs);
   }
 
-  public void prettyPrint(PrintWriter out, int depth) {
+  public void prettyPrint(PrintWriter out, int depth,  boolean showTs) {
     for (NameValue value : values) {
       out.print(Strings.repeat(".", depth));
 
@@ -62,7 +67,17 @@ public class SimpleRecord {
         out.print("<null>");
       } else if (byte[].class == val.getClass()) {
         out.print(" = ");
-        out.print(Arrays.toString((byte[])val));
+        byte[] barray = (byte[])val;
+        if(!showTs || barray.length != 12)       
+        	out.print(Arrays.toString(barray));
+        else {
+        	// it is likely to be int96 timestamp
+        	ByteBuffer buff = ByteBuffer.wrap(barray);
+			buff.order(ByteOrder.LITTLE_ENDIAN);
+			long nanosTime = buff.getLong();
+			int jday = buff.getInt();
+			out.print(julianToGregorian(jday) +" " + daysInNanosToTime(nanosTime));
+        }
       } else if (short[].class == val.getClass()) {
         out.print(" = ");
         out.print(Arrays.toString((short[])val));
@@ -96,6 +111,51 @@ public class SimpleRecord {
       out.println();
     }
   }
+  
+	private String julianToGregorian(double injulian) {
+		int JGREG = 15 + 31 * (10 + 12 * 1582);
+		int jalpha, ja, jb, jc, jd, je, year, month, day;
+		double julian = injulian + 0.5 / 86400.0;
+		ja = (int) julian;
+		if (ja >= JGREG) {
+			jalpha = (int) (((ja - 1867216) - 0.25) / 36524.25);
+			ja = ja + 1 + jalpha - jalpha / 4;
+		}
+
+		jb = ja + 1524;
+		jc = (int) (6680.0 + ((jb - 2439870) - 122.1) / 365.25);
+		jd = 365 * jc + jc / 4;
+		je = (int) ((jb - jd) / 30.6001);
+		day = jb - jd - (int) (30.6001 * je);
+		month = je - 1;
+		if (month > 12)
+			month = month - 12;
+		year = jc - 4715;
+		if (month > 2)
+			year--;
+		if (year <= 0)
+			year--;
+
+		return String.format("%d-%d-%d", year, month, day);
+
+	}
+	
+	private String daysInNanosToTime(long nanosTime) {
+		long nanos_to_ms = nanosTime / 1000000;
+
+		long hours_from_ms = nanos_to_ms / (60 * 60 * 1000);
+
+		long minutes_from_ms = (nanos_to_ms % (60 * 60 * 1000)) / (60 * 1000);
+
+		long seconds_from_ms = ((nanos_to_ms % (60 * 60 * 1000)) % (60 * 1000)) / 1000;
+
+		long millis_from_ms = nanos_to_ms % 1000;
+		
+		
+		return String.format("%d:%d:%d.%d", hours_from_ms,
+				minutes_from_ms, seconds_from_ms, millis_from_ms);
+	}
+
 
   public static final class NameValue {
     private final String name;
